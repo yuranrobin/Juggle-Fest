@@ -1,0 +1,246 @@
+import java.util.*;
+import java.io.*;
+
+/**
+ * 
+ * @author Ran Yu
+ *
+ */
+
+public class Juggle {
+	final int NUMBER_OF_CIRCUIT = 2000;
+	final int NUMBER_OF_JUGGLE = 12000;
+	final int NUMBER_OF_PERFER = 13;
+	final int MAX_CAPACITY = 6;
+	
+	public int[][] Circuit_Array = new int[ NUMBER_OF_CIRCUIT ][ 3 ];
+	public int[][] Juggle_Array = new int[ NUMBER_OF_JUGGLE ][ NUMBER_OF_PERFER ];
+	
+	//Store whether the juggle has matched circuit
+	public boolean[] Flag = new boolean[ NUMBER_OF_JUGGLE ];
+	
+	//Store the candidate juggles (stored in PriorityQueue sorted by value of JugglePair) of circuit
+	public TreeMap<Integer, PriorityQueue<JugglePair>> circuit_candidate_lst = new TreeMap<Integer, PriorityQueue<JugglePair>>();
+	
+	
+	/**
+	 * 
+	 * @param file
+	 */
+	public void read(String file) {
+		try {
+			BufferedReader bfrd = new BufferedReader(new FileReader(file));
+			String line = null;
+			int countCircuit = 0;
+			int countJuggle = 0;
+			while( (line = bfrd.readLine() ) != null) {
+				String[] str = line.split("[ ,]+");	
+				if(str[0].equals("C")) {
+					for(int i = 0; i < 3; i++) {
+						Circuit_Array[ countCircuit ][ i ] = Integer.parseInt(str[i + 2].substring(2));
+					}
+					countCircuit++;
+				} else if(str[0].equals("J")){
+					for(int i = 0; i < NUMBER_OF_PERFER; i++) {
+						if( i <= 2)
+							Juggle_Array[ countJuggle ][ i ] = Integer.parseInt(str[i + 2].substring(2));
+						else
+							Juggle_Array[ countJuggle ][ i ] = Integer.parseInt(str[i + 2].substring(1));
+
+					}
+					countJuggle++;
+				}
+			}
+			bfrd.close();
+			System.out.println("Import data finish.");
+			calculate();
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+	}
+	
+	
+	/**
+	 * Calculate the value of dot product
+	 * 
+	 */
+	public void calculate() {
+		for(int i = 0; i < Flag.length; i++)
+			Flag[i] = false;
+		
+		for (int jungle_preference = 3; jungle_preference < NUMBER_OF_PERFER; jungle_preference++) {
+			for (int count_juggle = 0; count_juggle < NUMBER_OF_JUGGLE; count_juggle++) {
+				int circuit_number = Juggle_Array[count_juggle][jungle_preference];
+				int value = Juggle_Array[count_juggle][0] * Circuit_Array[circuit_number][0]
+						+ Juggle_Array[count_juggle][1] * Circuit_Array[circuit_number][1]
+						+ Juggle_Array[count_juggle][2] * Circuit_Array[circuit_number][2];
+				findCircuit(count_juggle, circuit_number, value, jungle_preference);
+			}
+		}
+
+		//For those juggles couldn't find their right circuits, find the most suitable one
+		for (int count_juggle = 0; count_juggle < Flag.length; count_juggle++) {
+			if (Flag[ count_juggle ] == false) {
+				
+				//Set max comparator to -1 in order to prevent that some dot product values of juggles equal 0
+				int max = -1;
+				int record = -1;
+				for(int circuit_number = 0; circuit_number < NUMBER_OF_CIRCUIT; circuit_number++) {
+					if( circuit_candidate_lst.get( circuit_number ).size() < MAX_CAPACITY ) {
+						int value = Juggle_Array[count_juggle][0] * Circuit_Array[circuit_number][0]
+								+ Juggle_Array[count_juggle][1] * Circuit_Array[circuit_number][1]
+								+ Juggle_Array[count_juggle][2] * Circuit_Array[circuit_number][2];
+						if( value > max ) {
+							max = value;
+							record = circuit_number;
+						}
+					}
+				}
+				
+				PriorityQueue<JugglePair> myPriorityQueue = circuit_candidate_lst.remove( record );
+				JugglePair jugglePair = new JugglePair(count_juggle, max);
+				myPriorityQueue.add( jugglePair );
+				Flag[ count_juggle ] = true;
+				circuit_candidate_lst.put(record, myPriorityQueue);
+			}
+		}
+
+		
+		try {
+			BufferedWriter wt = new BufferedWriter(new FileWriter(
+					"output.txt"));
+			Iterator<Map.Entry<Integer, PriorityQueue<JugglePair>>> print = circuit_candidate_lst
+					.entrySet().iterator();
+			while (print.hasNext()) {
+				Map.Entry<Integer, PriorityQueue<JugglePair>> p = print.next();
+				int key = p.getKey();
+				int[] value = new int[MAX_CAPACITY];
+				for (int i = 0; i < MAX_CAPACITY; i++) {
+					value[i] = -1;
+				}
+
+				PriorityQueue<JugglePair> candidate = p.getValue();
+				int sum = 0;
+				for (int i = MAX_CAPACITY - 1; i >= 0; i--) {
+					JugglePair jugglePair = candidate.poll();
+					if (jugglePair != null)
+						value[i] = jugglePair.number;
+					sum += value[i];
+				}
+
+				wt.write("C" + key + " ");
+				for (int i = 0; i < MAX_CAPACITY; i++) {
+					wt.write("J" + value[i] + " ");
+				}
+
+				wt.newLine();
+				if(key == 1970) {
+					System.out.println("Email Address: " + sum + "@yodle.com ");
+				}
+			}
+			
+			wt.close();
+		} catch (IOException ex) {
+			ex.printStackTrace();
+		}
+
+	}
+	
+	
+	/**
+	 * 
+	 * @param count_juggle
+	 * @param circuit_number
+	 * @param value
+	 * @param jungle_preference
+	 * Judge if the value should be put into candidate list of circuit
+	 * Match juggle and circuit pair, if the circuit has enough room, just match them; else if circuit is full, compare if this juggle 
+	 * is more suitable; else do nothing.
+	 */
+	public void findCircuit (int count_juggle, int circuit_number, int value, int jungle_preference) {
+		if(Flag[ count_juggle ] == true) {
+			return;
+		}
+		
+		
+		if ( !circuit_candidate_lst.containsKey(circuit_number) ) {
+			JugglePair jugglePair = new JugglePair(count_juggle, value);
+			PriorityQueue<JugglePair> myPriorityQueue = new PriorityQueue<JugglePair>();
+			myPriorityQueue.add(jugglePair);
+			Flag[ count_juggle ] = true;
+			circuit_candidate_lst.put(circuit_number, myPriorityQueue );
+			
+		} else {
+			JugglePair jugglePair = new JugglePair(count_juggle, value);
+			
+			PriorityQueue<JugglePair> myPriorityQueue = circuit_candidate_lst.remove( circuit_number );
+			
+			JugglePair Waste = (JugglePair) myPriorityQueue.peek();
+			if(myPriorityQueue.size() == MAX_CAPACITY && Waste.value < value) {
+				myPriorityQueue.poll();
+				Flag [ Waste.number ] = false;
+
+				myPriorityQueue.add( jugglePair );
+				Flag[ count_juggle ] = true;
+				
+				circuit_candidate_lst.put(circuit_number, myPriorityQueue);
+				
+				int waste_circuit = Juggle_Array[ Waste.number ][jungle_preference];
+				int waste_value = Juggle_Array[Waste.number][0] * Circuit_Array[waste_circuit][0]
+						+ Juggle_Array[Waste.number][1] * Circuit_Array[waste_circuit][1]
+						+ Juggle_Array[Waste.number][2] * Circuit_Array[waste_circuit][2];
+				
+				//Recursively run till all elements which were kicked out could check their preference in this round
+				findCircuit(Waste.number, waste_circuit, waste_value, jungle_preference);
+				
+
+			} else if( myPriorityQueue.size() < MAX_CAPACITY ) {
+				myPriorityQueue.add( jugglePair );
+				Flag[ count_juggle ] = true;
+				circuit_candidate_lst.put(circuit_number, myPriorityQueue);
+			} else {
+
+				circuit_candidate_lst.put(circuit_number, myPriorityQueue);
+			}
+			
+		}
+	}
+	
+	
+	/**
+	 * 
+	 * @param args
+	 */
+	public static void main(String[] args) {
+		long start = System.currentTimeMillis();
+		Juggle Ju = new Juggle();
+		Ju.read("jugglefest.txt");
+		long end = System.currentTimeMillis();
+		System.out.println("Time cost: " + (end - start) + "ms. ");
+	}
+
+}
+
+/**
+ * 
+ * Class JugglePair stores number and dot product value with a particular circuit, compare by value
+ *
+ */
+class JugglePair implements Comparable<JugglePair>{
+	public int number;
+	public int value;
+	
+	JugglePair(int number, int value) {
+		this.number = number;
+		this.value = value;
+	}
+	
+	public int compareTo (JugglePair circuit) {
+		if(this.value > circuit.value)
+			return 1;
+		else if(this.value < circuit.value)
+			return -1;
+		else
+			return 0;
+	}
+}
